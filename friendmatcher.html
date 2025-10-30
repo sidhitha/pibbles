@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>FriendMatcher — Group Icebreaker</title>
+  <style>
+    :root{--bg:#0f1724;--card:#0b1220;--accent:#7c3aed;--muted:#93a5b1;--glass:rgba(255,255,255,0.04)}
+    *{box-sizing:border-box}
+    body{font-family:Inter, system-ui, -apple-system, Roboto, "Segoe UI", Arial; margin:0; background:linear-gradient(180deg,#071021 0%, #0b1220 100%); color:#e6eef6}
+    .wrap{max-width:980px;margin:32px auto;padding:20px}
+    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+    h1{margin:0;font-size:22px}
+    p.lead{margin:6px 0 0;color:var(--muted)}
+    .card{background:var(--card);padding:18px;border-radius:12px;box-shadow:0 6px 18px rgba(2,6,23,0.6)}
+    form .row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+    label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
+    input[type=text], textarea, select{width:100%;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:var(--glass);color:inherit}
+    .cols{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+    button{background:var(--accent);border:none;color:white;padding:10px 14px;border-radius:10px;cursor:pointer}
+    button.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06)}
+    .muted{color:var(--muted);font-size:13px}
+    .small{font-size:13px}
+    .list{margin-top:12px}
+    textarea{min-height:74px}
+    .center{display:flex;justify-content:center}
+    .output{white-space:pre-wrap;background:rgba(0,0,0,0.2);padding:12px;border-radius:8px;margin-top:10px}
+    footer{margin-top:18px;color:var(--muted);font-size:13px}
+    @media(max-width:720px){.cols{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>FriendMatcher — Group Icebreaker</h1>
+        <p class="lead">Collect interests &amp; auto-match once everyone in the group has submitted. No accounts required.</p>
+      </div>
+      <div style="text-align:right">
+        <div class="muted">Local demo — use Export/Import to move data between devices</div>
+      </div>
+    </header>
+
+    <section class="card">
+      <h3>1) Configure session (organiser)</h3>
+      <div class="row">
+        <div style="flex:1">
+          <label>Session name</label>
+          <input id="sessionName" type="text" placeholder="e.g. Year 10 — Term 4 icebreaker" />
+        </div>
+        <div style="width:160px">
+          <label>Expected submissions</label>
+          <input id="expectedCount" type="number" min="2" value="6"/>
+        </div>
+      </div>
+      <div class="muted small">Set the number of expected submissions. Matching will run automatically once that many entries are collected, or you can Match manually.</div>
+    </section>
+
+    <section class="card" style="margin-top:14px">
+      <h3>2) Fill the form (students)</h3>
+      <form id="entryForm">
+        <div class="cols">
+          <div>
+            <label>Your name (first name is fine)</label>
+            <input id="name" type="text" required placeholder="Alex" />
+          </div>
+          <div>
+            <label>Year / Class (optional)</label>
+            <input id="classinfo" type="text" placeholder="10A" />
+          </div>
+        </div>
+
+        <div style="margin-top:10px">
+          <label>Interests / Hobbies (comma separated)</label>
+          <input id="interests" type="text" placeholder="e.g. soccer, art, coding, anime" />
+        </div>
+
+        <div style="margin-top:10px">
+          <label>Clubs / Teams (comma separated)</label>
+          <input id="clubs" type="text" placeholder="e.g. debating, chess, netball" />
+        </div>
+
+        <div style="margin-top:10px">
+          <label>Short experiences / fun facts (one or two lines)</label>
+          <textarea id="facts" placeholder="e.g. volunteered at the library; loves baking"></textarea>
+        </div>
+
+        <div class="actions">
+          <button type="submit">Submit entry</button>
+          <button type="button" class="ghost" id="clearForm">Clear form</button>
+        </div>
+      </form>
+      <div id="formMsg" class="muted small" style="margin-top:8px"></div>
+    </section>
+
+    <section class="card" style="margin-top:14px">
+      <h3>3) Manage responses</h3>
+      <div class="actions">
+        <button id="viewResponses" class="ghost">View responses</button>
+        <button id="exportBtn" class="ghost">Export responses (JSON)</button>
+        <button id="importBtn" class="ghost">Import responses (JSON)</button>
+        <button id="matchBtn">Run matching now</button>
+      </div>
+
+      <div id="responsesArea" class="list"></div>
+
+      <div style="margin-top:10px">
+        <label>Matching output</label>
+        <div id="matches" class="output">No matches yet.</div>
+      </div>
+    </section>
+
+    <footer>
+      Tips: If students will use their own devices, the organiser should use <strong>Export responses</strong> after collecting entries on one device and share the JSON with the organiser's device, then Import before running matching. You can also copy the page files to a school-hosted Replit/GitHub Pages site and run there.
+    </footer>
+  </div>
+
+  <input id="fileInput" type="file" accept="application/json" style="display:none">
+
+  <script>
+    // Simple local-only storage model. Responses are saved to localStorage under key 'fm_responses'.
+    const KEY = 'fm_responses_v1'
+    const sessionKey = 'fm_session_v1'
+
+    function getResponses(){
+      try{
+        return JSON.parse(localStorage.getItem(KEY) || '[]')
+      }catch(e){return []}
+    }
+    function saveResponses(arr){localStorage.setItem(KEY, JSON.stringify(arr))}
+
+    // Form handling
+    const form = document.getElementById('entryForm')
+    const formMsg = document.getElementById('formMsg')
+    const responsesArea = document.getElementById('responsesArea')
+    const matchesArea = document.getElementById('matches')
+    const expectedCount = document.getElementById('expectedCount')
+    const sessionName = document.getElementById('sessionName')
+
+    // helpers
+    function normalizeList(s){if(!s) return []; return s.split(',').map(x=>x.trim().toLowerCase()).filter(Boolean)}
+    function now(){return new Date().toISOString()}
+
+    form.addEventListener('submit', e=>{
+      e.preventDefault()
+      const name = document.getElementById('name').value.trim()
+      if(!name){formMsg.textContent='Please enter a name'; return}
+      const entry = {
+        id: 'id_'+Math.random().toString(36).slice(2,9),
+        name,
+        classinfo: document.getElementById('classinfo').value.trim(),
+        interests: normalizeList(document.getElementById('interests').value),
+        clubs: normalizeList(document.getElementById('clubs').value),
+        facts: document.getElementById('facts').value.trim(),
+        created: now()
+      }
+      const arr = getResponses()
+      arr.push(entry)
+      saveResponses(arr)
+      formMsg.textContent = 'Thanks! Entry saved locally. Total entries: '+arr.length
+      form.reset()
+      if(arr.length >= Number(expectedCount.value)){
+        formMsg.textContent += ' — expected count reached. Matching can run now.'
+      }
+    })
+
+    document.getElementById('clearForm').addEventListener('click', ()=>{form.reset(); formMsg.textContent='Form cleared.'})
+    document.getElementById('viewResponses').addEventListener('click', showResponses)
+
+    function showResponses(){
+      const arr = getResponses()
+      if(arr.length===0){responsesArea.innerHTML = '<div class="muted">No responses yet.</div>'; return}
+      let html = '<div style="font-size:13px;color:var(--muted)">Total: '+arr.length+'</div>'
+      html += '<ol>'
+      for(const r of arr){
+        html += `<li><strong>${escapeHtml(r.name)}</strong> ${r.classinfo?('— '+escapeHtml(r.classinfo)):''}<div class="muted small">Interests: ${escapeHtml(r.interests.join(', '))} | Clubs: ${escapeHtml(r.clubs.join(', '))}</div></li>`
+      }
+      html += '</ol>'
+      responsesArea.innerHTML = html
+    }
+
+    // Export / Import
+    document.getElementById('exportBtn').addEventListener('click', ()=>{
+      const blob = new Blob([JSON.stringify({session:sessionName.value||'session', expected:Number(expectedCount.value)||0, responses:getResponses()}, null, 2)], {type:'application/json'})
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = (sessionName.value||'friendmatcher') + '_responses.json'
+      a.click()
+      URL.revokeObjectURL(url)
+    })
+
+    document.getElementById('importBtn').addEventListener('click', ()=>document.getElementById('fileInput').click())
+    document.getElementById('fileInput').addEventListener('change', async (e)=>{
+      const f = e.target.files[0]
+      if(!f) return
+      try{
+        const text = await f.text()
+        const data = JSON.parse(text)
+        if(data.responses && Array.isArray(data.responses)){
+          saveResponses(data.responses)
+          if(data.expected) expectedCount.value = data.expected
+          if(data.session) sessionName.value = data.session
+          showResponses()
+          matchesArea.textContent = 'Imported responses. Run matching when ready.'
+        }else{
+          alert('JSON did not look like a FriendMatcher export. It should include a "responses" array.')
+        }
+      }catch(err){alert('Could not read file: '+err.message)}
+      e.target.value = ''
+    })
+
+    // Matching algorithm (greedy by overlap score)
+    function score(a,b){
+      const ints = new Set([...a.interests, ...a.clubs])
+      let common = 0
+      for(const x of [...b.interests, ...b.clubs]) if(ints.has(x)) common++
+      // tiny tie-breakers: longer shared words boost slightly
+      return common
+    }
+
+    function computeMatches(list){
+      // list: array of entries; returns pairs array of [a,b]
+      const remaining = list.slice()
+      const pairs = []
+      while(remaining.length>1){
+        const a = remaining.shift()
+        // find best match
+        let bestIdx = -1, bestScore = -1
+        for(let i=0;i<remaining.length;i++){
+          const s = score(a, remaining[i])
+          if(s > bestScore){ bestScore = s; bestIdx = i }
+        }
+        if(bestIdx>=0){
+          const b = remaining.splice(bestIdx,1)[0]
+          pairs.push([a,b,bestScore])
+        } else {
+          // no match found (shouldn't happen) — last element remains
+          break
+        }
+      }
+      // if one remains unmatched, keep them as single
+      if(remaining.length===1) pairs.push([remaining[0], null, 0])
+      return pairs
+    }
+
+    document.getElementById('matchBtn').addEventListener('click', ()=>{
+      const arr = getResponses()
+      if(arr.length < 2){matchesArea.textContent = 'Need at least 2 entries to match.'; return}
+      // If expected count set and not reached, warn
+      const expected = Number(expectedCount.value)
+      if(expected > 0 && arr.length < expected){ if(!confirm('Expected submissions: '+expected+'. Only '+arr.length+' have submitted. Run matching anyway?')) return }
+
+      // compute
+      const pairs = computeMatches(arr)
+      // show
+      let out = ''
+      for(const [a,b,sc] of pairs){
+        if(b){
+          out += `${escapeHtml(a.name)} ↔ ${escapeHtml(b.name)} (score ${sc})\nInterests: ${escapeHtml([...a.interests].join(', '))} | ${escapeHtml([...b.interests].join(', '))}\n---\n`
+        } else {
+          out += `${escapeHtml(a.name)} — no match found (odd number of people)\n---\n`
+        }
+      }
+      matchesArea.textContent = out
+    })
+
+    // small escape helper
+    function escapeHtml(s){ if(!s) return ''; return s.replace(/[&<>\"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])) }
+
+    // on load show responses if any
+    showResponses()
+  </script>
+</body>
+</html>
